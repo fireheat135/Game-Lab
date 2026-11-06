@@ -33,7 +33,7 @@ Promise.all([
   ...CREATURES.filter(c => c.sprite).map(c => loadSprite(c.sprite!).then(img => sprites.creatures.set(c.kind, img))),
   loadSprite("sub").then(img => { sprites.sub = img; }),
 ]).then(() => { canvas.dataset.sprites = "ready"; }, () => { canvas.dataset.sprites = "fallback"; });
-const view = createView(canvas.getContext("2d")!, sprites);
+const view = createView(canvas.getContext("2d")!, sprites, { touch: matchMedia("(pointer: coarse)").matches });
 
 // ---- hand table (current values, so players can look things up instead of remembering) ----
 function renderHandTable() {
@@ -45,7 +45,8 @@ function renderHandTable() {
 renderHandTable();
 
 // ---- param panel + run report ----
-mountParamPanel(document.querySelector<HTMLElement>("#params-body")!, PARAMS, { ...urlParams, seed: run.p.seed }, { keep: ["test"] });
+// Panel shows the URL values (seed 0 = random each run); "このシードを固定" pins the current run's seed.
+mountParamPanel(document.querySelector<HTMLElement>("#params-body")!, PARAMS, urlParams, { keep: ["test"] });
 document.querySelector("#fix-seed")!.addEventListener("click", () => {
   const q = new URLSearchParams(location.search); q.set("seed", String(run.p.seed)); location.search = q.toString();
 });
@@ -65,20 +66,24 @@ function writeReport(r: Run) {
 }
 
 // ---- loop ----
-let last = performance.now(), reported = false;
+// Advancing (start / next / retry) needs a fresh Enter or 「決定」, never Space, and is ignored for a
+// moment after the screen changes — mashing fire must not skip the result or the next target.
+const ADVANCE_GUARD_MS = 350;
+let last = performance.now(), reported = false, phaseSince = performance.now(), lastPhase = run.phase;
 function frame(now: number) {
   const dt = Math.min((now - last) / 1000, 0.05); last = now;
   if (input.pressed("pause") && run.phase === "play") paused = !paused;
-  const advance = input.pressed("confirm") || (input.pressed("fire") && run.phase !== "play");
+  const advance = input.pressed("confirm") && now - phaseSince > ADVANCE_GUARD_MS;
   if (advance) paused = false;
   if (advance && (run.phase === "over" || run.phase === "win")) { run = createRun(newRunParams()); reported = false; }
   else if (!paused) {
     run = update(run, {
       dx: (input.held("right") ? 1 : 0) - (input.held("left") ? 1 : 0),
-      fire: input.held("fire") && !advance, cancel: input.pressed("cancel"), advance,
+      fire: input.held("fire"), cancel: input.pressed("cancel"), advance,
     }, dt);
   }
   input.endFrame();
+  if (run.phase !== lastPhase) { lastPhase = run.phase; phaseSince = now; }
   if ((run.phase === "over" || run.phase === "win") && !reported) { writeReport(run); reported = true; }
 
   view.render(run, now / 1000, paused);

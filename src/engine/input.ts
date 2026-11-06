@@ -9,35 +9,54 @@ export interface Input<A extends string> {
   endFrame(): void;
 }
 
+/**
+ * Pure press/release bookkeeping. Each physical source ("key:a", "pointer:3") is tracked separately,
+ * so releasing one of two sources for the same action keeps the action held.
+ */
+export function createActionState<A extends string>() {
+  const sourcesOf = new Map<A, Set<string>>();
+  let fresh = new Set<A>();
+  const held = (a: A) => (sourcesOf.get(a)?.size ?? 0) > 0;
+  return {
+    held,
+    pressed: (a: A) => fresh.has(a),
+    press(a: A, source: string) {
+      if (!held(a)) fresh.add(a);
+      if (!sourcesOf.has(a)) sourcesOf.set(a, new Set());
+      sourcesOf.get(a)!.add(source);
+    },
+    release(source: string) { for (const set of sourcesOf.values()) set.delete(source); },
+    releaseAll() { sourcesOf.clear(); },
+    endFrame() { fresh = new Set(); },
+  };
+}
+
 const normalize = (key: string) => (key.length === 1 ? key.toLowerCase() : key);
+const INTERACTIVE = "input, textarea, select, button, a, summary";
 
 /** Buttons with data-action="<action>" inside `pad` act like keys (touch / mouse). */
 export function createInput<A extends string>(map: ActionMap<A>, pad?: Element | null): Input<A> {
   const actionOf = new Map<string, A>();
   for (const action of Object.keys(map) as A[]) for (const key of map[action]) actionOf.set(normalize(key), action);
-  const down = new Set<A>();
-  let fresh = new Set<A>();
-  const press = (a: A) => { if (!down.has(a)) fresh.add(a); down.add(a); };
+  const state = createActionState<A>();
 
   addEventListener("keydown", e => {
-    if (e.target instanceof HTMLInputElement) return; // typing in the param panel
-    const action = actionOf.get(normalize(e.key));
+    // Keys typed into the panel or used to activate a focused control belong to that control.
+    if (e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
+    const key = normalize(e.key), action = actionOf.get(key);
     if (action === undefined) return;
     e.preventDefault();
-    press(action);
+    state.press(action, `key:${key}`);
   });
-  addEventListener("keyup", e => { const a = actionOf.get(normalize(e.key)); if (a !== undefined) down.delete(a); });
-  addEventListener("blur", () => down.clear());
+  addEventListener("keyup", e => state.release(`key:${normalize(e.key)}`));
+  addEventListener("blur", () => state.releaseAll());
 
   for (const button of pad?.querySelectorAll<HTMLElement>("[data-action]") ?? []) {
     const action = button.dataset.action as A;
-    button.addEventListener("pointerdown", e => { e.preventDefault(); press(action); });
-    for (const type of ["pointerup", "pointerleave", "pointercancel"]) button.addEventListener(type, () => down.delete(action));
+    button.addEventListener("pointerdown", e => { e.preventDefault(); state.press(action, `pointer:${e.pointerId}`); }); // preventDefault: no focus steal
+    for (const type of ["pointerup", "pointerleave", "pointercancel"] as const) {
+      button.addEventListener(type, e => state.release(`pointer:${e.pointerId}`));
+    }
   }
-
-  return {
-    held: a => down.has(a),
-    pressed: a => fresh.has(a),
-    endFrame: () => { fresh = new Set(); },
-  };
+  return { held: state.held, pressed: state.pressed, endFrame: state.endFrame };
 }

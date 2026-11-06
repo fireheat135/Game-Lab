@@ -248,3 +248,67 @@ describe("bot simulation (企画書 §12 段階0)", () => {
     expect(rep.sectorReached).toHaveLength(100);
   });
 });
+
+describe("engine: input state (Codex cross-check #1)", () => {
+  it("keeps an action held while any of its sources is still down", async () => {
+    const { createActionState } = await import("../src/engine/input");
+    const s = createActionState<"left">();
+    s.press("left", "key:ArrowLeft");
+    s.press("left", "key:a");
+    s.release("key:a");
+    expect(s.held("left")).toBe(true);
+    s.release("key:ArrowLeft");
+    expect(s.held("left")).toBe(false);
+  });
+  it("reports pressed once per new press and clears on endFrame", async () => {
+    const { createActionState } = await import("../src/engine/input");
+    const s = createActionState<"fire">();
+    s.press("fire", "key: ");
+    s.press("fire", "pointer:1"); // already held: not a new press
+    expect(s.pressed("fire")).toBe(true);
+    s.endFrame();
+    expect(s.pressed("fire")).toBe(false);
+    expect(s.held("fire")).toBe(true);
+    s.releaseAll();
+    expect(s.held("fire")).toBe(false);
+  });
+});
+
+describe("bot simulation stops at stage clear like the real game (Codex cross-check #2)", () => {
+  it("matches the run's hand history for the same kill order", async () => {
+    const { simulateStage } = await import("../src/games/formation/sim");
+    const p = withP({ k: 0.5 });
+    const target = targetFor(p, 1, 0);
+    const sim = simulateStage(p, p.seed, "column", target);
+    const total = sim.hands.reduce((s, h) => s + h.score, 0);
+    expect(total).toBeGreaterThanOrEqual(target);
+    expect(total - sim.hands[sim.hands.length - 1].score).toBeLessThan(target);
+    // the real run, shooting the same way (leftmost column first), clears with the same hands
+    let r: Run = { ...update(createRun(p), { ...idle, advance: true }, 0), calm: true };
+    while (r.phase === "play") r = killEnemy(r, frontEnemies(r.enemies)[0].id);
+    expect(r.phase).toBe("clear");
+    expect(r.history.map(h => h.score)).toEqual(sim.hands.map(h => h.score));
+  });
+});
+
+describe("playtest round 2", () => {
+  const play = (p = P): Run => update(createRun(p), { ...idle, advance: true }, 0);
+  it("cancel also removes the bullet in flight, so the emptied queue stays empty", () => {
+    let r = { ...play(), calm: true };
+    r = update(r, { ...idle, fire: true }, 0.016);
+    expect(r.bullet).not.toBeNull();
+    r = killEnemy(r, frontEnemies(r.enemies)[0].id);
+    r = update(r, { ...idle, cancel: true }, 0.016);
+    expect(r.bullet).toBeNull();
+    expect(r.queue).toHaveLength(0);
+  });
+  it("kills leave a fading effect and hits set a hit flash timer", () => {
+    let r = { ...play(), calm: true };
+    r = killEnemy(r, frontEnemies(r.enemies)[0].id);
+    expect(r.effects).toHaveLength(1);
+    for (let i = 0; i < 60; i++) r = update(r, idle, 0.02);
+    expect(r.effects).toHaveLength(0);
+    r = update({ ...r, ebullets: [{ x: r.x, y: PLAYER_Y - 2 }] }, idle, 0.001);
+    expect(r.hitT).toBeGreaterThan(0);
+  });
+});

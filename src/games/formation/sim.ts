@@ -5,7 +5,7 @@ import { frontEnemies, generateFormation, type Enemy } from "./formation";
 import { STAGES, type FormationParams, type HandId } from "./rules";
 import { targetFor } from "./run";
 
-/** greedy: best partial hand now. lookahead: searches the rest of the hand. column / row: naive sweeps. */
+/** greedy: best partial hand now. lookahead: searches the rest of the hand (slow for queue ≥ 7). column / row: naive sweeps. */
 export type Policy = "greedy" | "lookahead" | "column" | "row";
 
 const toKill = (e: Enemy, p: FormationParams): Kill => ({
@@ -33,16 +33,21 @@ function choose(enemies: Enemy[], queue: Kill[], p: FormationParams, policy: Pol
   return front.map(e => ({ e, v: value(e) })).reduce((a, b) => (b.v > a.v ? b : a)).e;
 }
 
-export function simulateStage(p: FormationParams, seed: number, policy: Policy): { hands: HandResult[]; seed: number } {
+/** Plays one formation. Stops as soon as `target` is reached, like the real game's stage clear. */
+export function simulateStage(p: FormationParams, seed: number, policy: Policy, target = Infinity): { hands: HandResult[]; seed: number } {
   const gen = generateFormation(p, seed);
   let enemies = gen.enemies, queue: Kill[] = [];
   const hands: HandResult[] = [];
-  while (frontEnemies(enemies).length > 0) {
+  let total = 0;
+  while (frontEnemies(enemies).length > 0 && total < target) {
     const e = choose(enemies, queue, p, policy);
     enemies = without(enemies, e.id);
     queue.push(toKill(e, p));
     const wiped = enemies.every(x => !x.alive);
-    if (queue.length >= p.queue || wiped) { hands.push(evaluateHand(queue, p, { sweep: wiped })); queue = []; }
+    if (queue.length >= p.queue || wiped) {
+      const hand = evaluateHand(queue, p, { sweep: wiped });
+      hands.push(hand); total += hand.score; queue = [];
+    }
   }
   return { hands, seed: gen.seed };
 }
@@ -54,7 +59,7 @@ export function simulateRuns(p: FormationParams, runs: number, policy: Policy) {
   for (let i = 0; i < runs; i++) {
     let seed = i + 1, sector = 1;
     run: for (; sector <= p.sectors; sector++) for (let stage = 0; stage < STAGES.length; stage++) {
-      const res = simulateStage(p, seed, policy);
+      const res = simulateStage(p, seed, policy, targetFor(p, sector, stage));
       seed = res.seed;
       for (const h of res.hands) { counts[h.hand] = (counts[h.hand] ?? 0) + 1; handsPlayed++; }
       const total = res.hands.reduce((s, h) => s + h.score, 0);

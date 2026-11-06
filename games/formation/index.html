@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>FORMATION HAND</title>
+    <link rel="icon" href="data:," />
     <meta name="description" content="深海の群れを撃つ順番で役をつくる、隊列シューティング × ローグライトの試作" />
     <style>
       :root { color-scheme: dark; --bg: #030a18; --panel: #0b1a30; --line: #1f3557; --ink: #e8f1ff; --dim: #8ea3c4; --accent: #ffcf5a; --link: #9cf; }
@@ -10,8 +11,16 @@
       main { max-width: 1000px; margin: 0 auto; padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
       #play { display: flex; flex-direction: column; align-items: center; gap: 8px; }
       canvas { background: #000; width: min(480px, 100%); max-height: 82vh; aspect-ratio: 3 / 4; touch-action: none; border-radius: 6px; }
-      #pad { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
-      #pad button { font-size: 16px; min-width: 52px; min-height: 44px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: inherit; user-select: none; touch-action: none; }
+      /* Touch pad: move on the left thumb, a large fire button on the right thumb; system buttons kept apart above. */
+      #pad { width: min(480px, 100%); display: flex; flex-direction: column; gap: 8px; }
+      #pad .sys { display: flex; gap: 6px; justify-content: flex-end; }
+      #pad .sys button { font-size: 13px; min-height: 36px; padding: 4px 10px; }
+      #pad .main { display: flex; justify-content: space-between; align-items: center; }
+      #pad .move { display: flex; gap: 10px; }
+      #pad .move button { min-width: 64px; min-height: 56px; font-size: 20px; }
+      #pad .fire { min-width: 120px; min-height: 64px; font-size: 18px; font-weight: 700; background: #1d3f6e; }
+      #pad button { min-width: 44px; min-height: 44px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: inherit; user-select: none; touch-action: none; }
+      @media (pointer: fine) { #pad .main { display: none; } }
       #pad button:active { background: #16325a; }
       aside { flex: 1 1 320px; max-width: 470px; font-size: 13px; }
       h1 { font-size: 20px; margin: 4px 0 2px; letter-spacing: .04em; }
@@ -42,15 +51,18 @@
       <section id="play" aria-label="ゲーム画面">
         <canvas id="game" width="480" height="640" aria-label="FORMATION HAND のプレイ画面"></canvas>
         <div id="pad" aria-label="タッチ操作">
-          <button data-action="left" aria-label="左へ">◀</button><button data-action="fire">撃つ</button><button data-action="right" aria-label="右へ">▶</button>
-          <button data-action="cancel">キャンセル</button><button data-action="confirm">決定</button><button data-action="pause">一時停止</button>
+          <div class="sys"><button data-action="pause">一時停止</button><button data-action="cancel">キャンセル</button><button data-action="confirm">決定</button></div>
+          <div class="main">
+            <div class="move"><button data-action="left" aria-label="左へ">◀</button><button data-action="right" aria-label="右へ">▶</button></div>
+            <button data-action="fire" class="fire">撃つ</button>
+          </div>
         </div>
       </section>
       <aside>
         <h1>FORMATION HAND</h1>
         <p class="sub">深海の群れを「撃つ順番」で役にする探査艇シューティング（試作）</p>
         <div class="keys">
-          <kbd>←</kbd><kbd>→</kbd> / <kbd>A</kbd><kbd>D</kbd> 移動　<kbd>Space</kbd> 撃つ（長押しで連射）　<kbd>X</kbd> キャンセル　<kbd>Enter</kbd> 開始・次へ　<kbd>P</kbd> 一時停止<br />
+          <kbd>←</kbd><kbd>→</kbd> / <kbd>A</kbd><kbd>D</kbd> 移動　<kbd>Space</kbd> 撃つ（長押しで連射）　<kbd>X</kbd> キャンセル　<kbd>Enter</kbd> 開始・次へ（Space では進まない）　<kbd>P</kbd> 一時停止<br />
           撃てるのは各列のいちばん下（枠つき）だけ。<b style="color:var(--accent)">金色の枠</b>は今いちばん良い役になる狙い目。<br />
           倒した順に5体でキューが埋まると1ハンド確定。番号＝生き物の種類（ランク）、光の色＝スート。
         </div>

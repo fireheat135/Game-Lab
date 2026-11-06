@@ -6,8 +6,8 @@ import { SECTORS, STAGES, type BonusId, type FormationParams, type HandId } from
 
 // ---- screen geometry (canvas is W × H)
 export const W = 480, H = 640;
-export const TOP_Y = 76, LINE_Y = 520, PLAYER_Y = 560, PLAYER_W = 32;
-const MARGIN = 8, BULLET_SPEED = 640, INVULN_SECONDS = 1, HAND_POPUP_SECONDS = 2.5;
+export const TOP_Y = 82, LINE_Y = 520, PLAYER_Y = 560, PLAYER_W = 32;
+const MARGIN = 8, BULLET_SPEED = 640, INVULN_SECONDS = 1, HAND_POPUP_SECONDS = 2.5, EFFECT_SECONDS = 0.45, HIT_FLASH_SECONDS = 0.35;
 
 /** Cell size shrinks with more columns/rows so the formation always fits with room to march. */
 export function layout(p: FormationParams) {
@@ -21,6 +21,8 @@ export type Phase = "preview" | "play" | "clear" | "over" | "win";
 export type Cause = "shot" | "line" | "wiped";
 export interface Bullet { x: number; y: number }
 export interface Warn { id: number; t: number }
+/** Short-lived visual feedback (kill burst). t counts down to 0. */
+export interface Effect { x: number; y: number; color: number; t: number }
 export interface Input { dx: number; fire: boolean; cancel: boolean; advance: boolean }
 export interface HandLog { sector: number; stage: number; hand: HandId; bonuses: BonusId[]; score: number }
 export interface RunStats { hands: Partial<Record<HandId, number>>; bonuses: Partial<Record<BonusId, number>>; cancelsUsed: number }
@@ -29,7 +31,7 @@ export interface Run {
   p: FormationParams; seed: number; phase: Phase; sector: number; stage: number; target: number; score: number;
   shields: number; cancels: number; enemies: Enemy[]; total: number; fx: number; fy: number; dir: number;
   x: number; bullet: Bullet | null; cd: number; ebullets: Bullet[]; warns: Warn[]; fireT: number; invuln: number;
-  queue: Kill[]; lastHand: HandResult | null; lastHandT: number; time: number; calm: boolean;
+  queue: Kill[]; lastHand: HandResult | null; lastHandT: number; time: number; calm: boolean; effects: Effect[]; hitT: number;
   cause: Cause | null; history: HandLog[]; stats: RunStats;
 }
 
@@ -45,7 +47,7 @@ function freshStage(r: Pick<Run, "p" | "seed" | "sector" | "stage">) {
     seed, enemies, total: enemies.length, phase: "preview" as Phase,
     target: targetFor(r.p, r.sector, r.stage), score: 0, cancels: r.p.cancels,
     fx: (W - r.p.cols * g.cellW) / 2, fy: TOP_Y, dir: 1, x: W / 2, bullet: null, cd: 0, ebullets: [], warns: [],
-    fireT: r.p.fire > 0 ? 1 / r.p.fire : Infinity, invuln: 0, queue: [], lastHand: null, lastHandT: 0, time: 0,
+    fireT: r.p.fire > 0 ? 1 / r.p.fire : Infinity, invuln: 0, queue: [], lastHand: null, lastHandT: 0, time: 0, effects: [], hitT: 0,
   };
 }
 
@@ -96,7 +98,9 @@ export function killEnemy(r: Run, id: number): Run {
   if (e.hp > 1) return { ...r, enemies: r.enemies.map(x => (x.id === id ? { ...x, hp: x.hp - 1 } : x)) };
   const enemies = r.enemies.map(x => (x.id === id ? { ...x, hp: 0, alive: false } : x));
   const alive = enemies.filter(x => x.alive).length;
-  let next: Run = { ...r, enemies, queue: [...r.queue, toKill(e, r.p)] };
+  const b = enemyRect(r, e);
+  const burst: Effect = { x: b.x + b.w / 2, y: b.y + b.h / 2, color: e.color, t: EFFECT_SECONDS };
+  let next: Run = { ...r, enemies, queue: [...r.queue, toKill(e, r.p)], effects: [...r.effects, burst] };
   if (next.queue.length >= next.p.queue || alive === 0) next = scoreQueue(next, alive === 0);
   if (alive === 0 && next.phase === "play") next = { ...next, phase: "over", cause: "wiped" };
   return next;
@@ -116,7 +120,8 @@ function movePlayer(r: Run, input: Input, dt: number): Run {
   const x = Math.min(Math.max(r.x + input.dx * r.p.move * dt, PLAYER_W / 2), W - PLAYER_W / 2);
   let next = { ...r, x };
   if (input.cancel && next.queue.length > 0 && next.cancels > 0) {
-    next = { ...next, queue: [], cancels: next.cancels - 1, stats: { ...next.stats, cancelsUsed: next.stats.cancelsUsed + 1 } };
+    // The bullet in flight is discarded too, otherwise it lands right after and refills the queue.
+    next = { ...next, queue: [], bullet: null, cancels: next.cancels - 1, stats: { ...next.stats, cancelsUsed: next.stats.cancelsUsed + 1 } };
   }
   if (input.fire && !next.bullet && next.cd <= 0) next = { ...next, bullet: { x, y: PLAYER_Y - 14 }, cd: next.p.cd };
   return next;
@@ -171,21 +176,25 @@ function enemyFire(r: Run, dt: number): Run {
 }
 
 function moveEnemyBullets(r: Run, dt: number): Run {
-  let shields = r.shields, invuln = r.invuln;
+  let shields = r.shields, invuln = r.invuln, hitT = r.hitT;
   const ebullets: Bullet[] = [];
   for (const b of r.ebullets) {
     const nb = { x: b.x, y: b.y + r.p.ebullet * dt };
     const hits = Math.abs(nb.x - r.x) < PLAYER_W / 2 && nb.y >= PLAYER_Y - 12 && b.y <= PLAYER_Y + 12;
-    if (hits && invuln <= 0) { shields--; invuln = INVULN_SECONDS; continue; }
+    if (hits && invuln <= 0) { shields--; invuln = INVULN_SECONDS; hitT = HIT_FLASH_SECONDS; continue; }
     if (nb.y < H) ebullets.push(nb);
   }
-  return { ...r, ebullets, shields, invuln };
+  return { ...r, ebullets, shields, invuln, hitT };
 }
 
 export function update(r0: Run, input: Input, dt: number): Run {
   if (input.advance) return advance(r0);
   if (r0.phase !== "play") return r0;
-  let r: Run = { ...r0, time: r0.time + dt, invuln: Math.max(0, r0.invuln - dt), lastHandT: Math.max(0, r0.lastHandT - dt), cd: Math.max(0, r0.cd - dt) };
+  let r: Run = {
+    ...r0, time: r0.time + dt, invuln: Math.max(0, r0.invuln - dt), lastHandT: Math.max(0, r0.lastHandT - dt),
+    cd: Math.max(0, r0.cd - dt), hitT: Math.max(0, r0.hitT - dt),
+    effects: r0.effects.map(f => ({ ...f, t: f.t - dt })).filter(f => f.t > 0),
+  };
 
   r = movePlayerBullet(movePlayer(r, input, dt), dt);
   if (r.phase !== "play") return r;

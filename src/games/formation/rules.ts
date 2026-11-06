@@ -41,15 +41,15 @@ export const CREATURES: readonly { kind: number; name: string; sprite: string | 
   { kind: 9, name: "リュウグウノツカイ", sprite: null, killChips: 50 },
 ];
 
-// ---- glows = suits (primary key: id). Okabe–Ito palette: distinguishable with common color blindness.
-export const GLOWS: readonly { id: number; name: string; hex: string }[] = [
-  { id: 0, name: "橙", hex: "#E69F00" },
-  { id: 1, name: "空", hex: "#56B4E9" },
-  { id: 2, name: "翠", hex: "#009E73" },
-  { id: 3, name: "桃", hex: "#CC79A7" },
-  { id: 4, name: "黄", hex: "#F0E442" },
-  { id: 5, name: "朱", hex: "#D55E00" },
-  { id: 6, name: "藍", hex: "#0072B2" },
+// ---- glows = suits (primary key: id). Okabe–Ito palette + a mark per glow, so suits never rely on color alone.
+export const GLOWS: readonly { id: number; name: string; hex: string; mark: string }[] = [
+  { id: 0, name: "橙", hex: "#E69F00", mark: "●" },
+  { id: 1, name: "空", hex: "#56B4E9", mark: "▲" },
+  { id: 2, name: "翠", hex: "#009E73", mark: "■" },
+  { id: 3, name: "桃", hex: "#CC79A7", mark: "◆" },
+  { id: 4, name: "黄", hex: "#F0E442", mark: "★" },
+  { id: 5, name: "朱", hex: "#D55E00", mark: "✚" },
+  { id: 6, name: "藍", hex: "#0072B2", mark: "♥" },
 ];
 
 // ---- stages within a sector (primary key: id)
@@ -95,7 +95,7 @@ export const PARAMS: readonly ParamDef<ParamKey>[] = [
   scalar("accel", "群れの動き", "減るほど速くなる量（全滅直前で 1+accel 倍）", 2, 0, 20),
   scalar("drop", "群れの動き", "端で降りる量（px）", 16, 0, 100),
   scalar("fire", "群れの動き", "敵弾の頻度（発/秒）", 0.5, 0, 20),
-  scalar("warn", "群れの動き", "敵弾の予告時間（秒）", 0.5, 0, 3),
+  scalar("warn", "群れの動き", "敵弾の予告時間（秒）", 0.7, 0, 3),
   scalar("ebullet", "群れの動き", "敵弾の速さ（px/秒）", 200, 20, 1000),
   scalar("sectors", "天井", "深度の段階数（各3ステージ）", SECTORS.length, 1, SECTORS.length, true),
   scalar("k", "天井", "要求スコアの倍率 k", 2, 0.0001, 1e6),

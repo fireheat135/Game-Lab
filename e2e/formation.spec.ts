@@ -15,19 +15,19 @@ async function data(page: Page) {
   };
 }
 
-/** Enter is handled on the next frame: wait until play before calling hooks (they ignore other phases). */
-async function start(page: Page) {
-  await page.keyboard.press("Enter");
-  await expect.poll(async () => (await data(page)).phase).toBe("play");
+/** Presses Enter until `done` holds. Advancing is ignored for 350 ms after each screen change (anti-mash guard). */
+async function confirmUntil(page: Page, done: (d: Awaited<ReturnType<typeof data>>) => boolean) {
+  await expect.poll(async () => { if (!done(await data(page))) await page.keyboard.press("Enter"); return done(await data(page)); }, { intervals: [150] }).toBe(true);
 }
+/** Start the stage and wait until play (hooks ignore other phases). */
+const start = (page: Page) => confirmUntil(page, d => d.phase === "play");
 
 test("preview → play, move, shoot a real bullet into the formation", async ({ page }) => {
   await page.goto("/games/formation/?test&seed=3");
   await expect(page.locator("#game")).toHaveAttribute("data-phase", "preview");
   await expect(page.locator("#game")).toHaveAttribute("data-sprites", "ready");
   await page.screenshot({ path: "test-results/formation-preview.png" });
-  await page.keyboard.press("Enter");
-  await expect.poll(async () => (await data(page)).phase).toBe("play");
+  await start(page);
   await hook(page, "calm");
 
   const x0 = (await data(page)).x;
@@ -77,9 +77,11 @@ test("reaching the target clears the stage and advances", async ({ page }) => {
   await hook(page, "calm");
   for (const col of [0, 1, 2, 3, 4]) await hook(page, "kill", col);
   await expect.poll(async () => (await data(page)).phase).toBe("clear");
-  await page.keyboard.press("Enter");
-  await expect.poll(async () => (await data(page)).stage).toBe(1);
-  expect((await data(page)).phase).toBe("preview");
+  await confirmUntil(page, d => d.stage === 1);
+  // Space must not advance (mashing fire would skip the next target)
+  await page.keyboard.press(" ");
+  await page.waitForTimeout(200);
+  expect((await data(page)).stage).toBe(1);
 });
 
 test("losing every shield ends the run with a report; Enter restarts", async ({ page }) => {
@@ -90,8 +92,7 @@ test("losing every shield ends the run with a report; Enter restarts", async ({ 
   await expect.poll(async () => (await data(page)).phase).toBe("over");
   await expect(page.locator("#report")).toContainText("ゲームオーバー");
   await page.screenshot({ path: "test-results/formation-over.png" });
-  await page.keyboard.press("Enter");
-  await expect.poll(async () => (await data(page)).phase).toBe("preview");
+  await confirmUntil(page, d => d.phase === "preview");
   expect((await data(page)).shields).toBe(1);
 });
 
@@ -109,8 +110,7 @@ test("the panel edits the URL query", async ({ page }) => {
 
 test("P pauses and resumes; the hint outline needs no input", async ({ page }) => {
   await page.goto("/games/formation/?test&seed=3");
-  await page.keyboard.press("Enter");
-  await expect.poll(async () => (await data(page)).phase).toBe("play");
+  await start(page);
   await page.keyboard.press("p");
   await expect(page.locator("#game")).toHaveAttribute("data-paused", "true");
   await page.screenshot({ path: "test-results/formation-paused.png" });
@@ -122,4 +122,19 @@ test("hand table lists current values from the query", async ({ page }) => {
   await page.goto("/games/formation/?flush.chips=777");
   await page.locator("#hands-box summary").click();
   await expect(page.locator("#hands")).toContainText("777");
+});
+
+test.describe("phone", () => {
+  test.use({ viewport: { width: 375, height: 667 }, hasTouch: true, isMobile: true });
+  test("fits without horizontal scroll and shows a large fire button", async ({ page }) => {
+    await page.goto("/games/formation/?test&seed=3");
+    await expect(page.locator("#game")).toHaveAttribute("data-sprites", "ready");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const fire = page.locator('#pad [data-action="fire"]');
+    await expect(fire).toBeVisible();
+    const box = (await fire.boundingBox())!;
+    expect(box.width).toBeGreaterThanOrEqual(64);
+    expect(box.height).toBeGreaterThanOrEqual(56);
+    await page.screenshot({ path: "test-results/formation-phone.png" });
+  });
 });
