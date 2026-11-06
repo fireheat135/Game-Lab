@@ -10,7 +10,8 @@
     "test": "vitest run",
     "e2e": "playwright test",
     "test:tools": "python3 -m unittest discover -s tools -p 'test_*.py'",
-    "sim": "SIM_REPORT=1 vitest run tests/balance.test.ts --silent=false"
+    "sim": "SIM_REPORT=1 vitest run tests/balance.test.ts --silent=false",
+    "sim:abyss": "SIM_REPORT=1 vitest run tests/abyss-balance.test.ts --silent=false"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",
