@@ -45,7 +45,8 @@
 - プッシュすると Cloudflare がビルドし、PR にプレビュー URL をコメントする。ユーザーはそこで遊ぶ（ローカル確認は求めない）
 - `wrangler.jsonc` は静的アセットのみ: `main`（Worker スクリプト）やバインディング（KV/R2/D1 等）を足さない。`npx wrangler deploy --dry-run` で `No bindings found` を確認
 - `public/_headers` の CSP は `'self'` のみ。外部 CDN・外部通信を足さない。DOM は `textContent`（`innerHTML` 禁止）
-- Cloudflare のビルドログは GitHub のチェックに本文が出ない。失敗時はユーザーにログ末尾を貼ってもらう
+- Cloudflare のビルドログは GitHub のチェックに本文が出ない。失敗時は推測で直さず、まずユーザーにログ末尾を貼ってもらう
+- ブランチのビルドは `npx wrangler preview`（`previews` ブロック必須）。プレビュー URL はダッシュボードで workers.dev / Preview URLs を有効化して出る
 
 ## GitHub
 - `.github/workflows/` は Claude からプッシュ不可 → コピペ用ブロックでユーザーに渡す
