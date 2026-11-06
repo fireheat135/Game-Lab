@@ -11,9 +11,14 @@ const params = new URLSearchParams(location.search);
 const seed = params.get("seed");
 const rand = seed !== null ? mulberry32(Number(seed)) : Math.random;
 let forced: Block | undefined;
-if (params.has("test")) {
-  (window as unknown as { __gameTest: { hitPlayer(): void } }).__gameTest = {
+let calm = false;
+// Test hooks exist only in the e2e build (VITE_E2E=1 is set by playwright.config.ts); Vite strips
+// this block from normal builds, so the deployed game has no __gameTest.
+if (import.meta.env.VITE_E2E && params.has("test")) {
+  (window as unknown as { __gameTest: object }).__gameTest = {
     hitPlayer: () => { forced = { x: state.player.x, y: state.player.y, size: PLAYER_SIZE, speed: 0 }; },
+    spawn: (x: number, y: number, speed: number) => { forced = { x, y, size: 20, speed }; },
+    calm: () => { calm = true; state = { ...state, blocks: [] }; },
   };
 }
 addEventListener("keydown", e => { keys.add(e.key); if (state.over && e.key === " ") state = createState(canvas.width, canvas.height); });
@@ -35,7 +40,7 @@ function frame(now: number) {
   const dx = (keys.has("ArrowRight") ? 1 : 0) - (keys.has("ArrowLeft") ? 1 : 0);
   state = movePlayer(state, dx * 260 * dt);
   const size = 18 + rand() * 18;
-  let spawn: Block | undefined = rand() < dt * 2.5 ? { x: rand() * (canvas.width - size), y: -size, size, speed: 120 + state.score * 4 } : undefined;
+  let spawn: Block | undefined = !calm && rand() < dt * 2.5 ? { x: rand() * (canvas.width - size), y: -size, size, speed: 120 + state.score * 4 } : undefined;
   if (forced) { spawn = forced; forced = undefined; }
   state = step(state, dt, spawn);
 

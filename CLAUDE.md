@@ -24,7 +24,8 @@
 ## 検証（コミット前に全部）
 `npm run typecheck && npm test && npm run build && npm run e2e && npm run test:tools`
 - e2e はローカルなら `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium` を付ける（CI では不要）
-- ランダム要素は `?seed=N`（`mulberry32`）で固定、衝突などは `?test` の `window.__gameTest` で確実に起こす。確率待ちのテストは書かない
+- ランダム要素は `?seed=N`（`mulberry32`）で固定。衝突・出現・静止は `?test` の `window.__gameTest`（hitPlayer / spawn / calm）で確実に起こす。確率待ちのテストは書かない
+- `__gameTest` は `VITE_E2E=1` のビルド（e2e 用）にだけ入る。本番ビルドに残っていないことを `grep -c __gameTest dist/assets/*.js` = 0 で確認
 - `test:tools` は Pillow が必要（CI 未対応。ローカルで実行）
 
 ## GitHub
