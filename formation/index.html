@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FORMATION HAND</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; background: #0d0f14; color: #e8e8ee; font-family: system-ui, sans-serif; }
+      main { max-width: 980px; margin: 0 auto; padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
+      #play { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+      canvas { background: #000; width: min(480px, 100%); max-height: 82vh; aspect-ratio: 3 / 4; image-rendering: pixelated; touch-action: none; }
+      #pad { display: flex; gap: 6px; }
+      #pad button { font-size: 16px; padding: 10px 14px; border-radius: 8px; border: 1px solid #445; background: #1b1f2a; color: inherit; user-select: none; touch-action: none; }
+      aside { flex: 1 1 320px; max-width: 460px; font-size: 13px; }
+      h1 { font-size: 18px; margin: 4px 0 8px; }
+      .keys { color: #aab; line-height: 1.6; }
+      details { background: #151925; border: 1px solid #2a3040; border-radius: 8px; padding: 8px 10px; margin-top: 10px; }
+      summary { cursor: pointer; font-weight: 600; }
+      table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+      th { text-align: left; color: #8fa0c0; font-weight: 600; padding: 8px 0 2px; }
+      td { padding: 2px 4px 2px 0; vertical-align: middle; }
+      td:first-child { font-family: ui-monospace, monospace; color: #9cf; white-space: nowrap; }
+      input { width: 100%; box-sizing: border-box; background: #0d0f14; color: inherit; border: 1px solid #334; border-radius: 4px; padding: 3px 5px; font-family: ui-monospace, monospace; }
+      input.changed { border-color: #f5a524; }
+      .row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+      .row button, .row a { font-size: 13px; padding: 6px 10px; border-radius: 6px; border: 1px solid #445; background: #222838; color: inherit; text-decoration: none; cursor: pointer; }
+      code, pre { font-family: ui-monospace, monospace; word-break: break-all; white-space: pre-wrap; }
+      pre { background: #0d0f14; padding: 8px; border-radius: 6px; max-height: 260px; overflow: auto; margin: 6px 0 0; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section id="play">
+        <canvas id="game" width="480" height="640"></canvas>
+        <div id="pad">
+          <button data-key="ArrowLeft">◀</button><button data-key=" ">撃つ</button><button data-key="ArrowRight">▶</button>
+          <button data-key="x">キャンセル</button><button data-key="Enter">決定</button>
+        </div>
+      </section>
+      <aside>
+        <h1>FORMATION HAND <small>試作 段階1</small></h1>
+        <div class="keys">
+          ←→ / A D: 移動　Space: 撃つ（長押しで連射）　X: キャンセル（キューを捨てる）　Enter / Space: 開始・次へ<br />
+          5体撃つと1ハンド確定。撃てるのは各列のいちばん下の敵（白い枠）だけ。
+        </div>
+        <details id="params" open>
+          <summary>検証パラメータ（URL クエリ）</summary>
+          <div>現在のクエリ: <code id="query"></code></div>
+          <div class="row"><button id="apply">適用して再読み込み</button><a id="reset" href="./">初期値に戻す</a><button id="fix-seed">このシードを固定</button></div>
+          <table id="param-table"></table>
+        </details>
+        <details id="report-box">
+          <summary>ランの記録（死後画面と同じ内容。コピーして共有できます）</summary>
+          <pre id="report">まだ記録はありません</pre>
+        </details>
+        <p><a href="../" style="color:#9cf">← Game Lab トップ</a></p>
+      </aside>
+    </main>
+    <script type="module" src="/src/formation/main.ts"></script>
+  </body>
+</html>
