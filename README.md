@@ -10,5 +10,12 @@
 | `npm run e2e` | ブラウザテスト（Playwright。ローカルでは `PW_CHROMIUM_PATH` で Chromium を指定可） |
 | `npm run build` | 型チェック + ビルド（`BASE_PATH` で公開パスを指定） |
 
-最初のゲーム: 落ちてくる隕石を ←→ で避ける。Space でリトライ。
+| `npm run sim` | バランス計測（ボットで役の成立率と到達度。`SIM_QUERY="k=1.5"` で変種） |
+
+| ゲーム | URL | 内容 |
+|---|---|---|
+| 隕石よけ | `/` | 落ちてくる隕石を ←→ で避ける。Space でリトライ |
+| FORMATION HAND | `/games/formation/` | 深海の群れを撃つ順番で役をつくる隊列シューティング × ローグライト（試作）。調整値はすべて URL クエリで変更可 |
+
+公開: ブランチにプッシュすると Cloudflare Workers Builds がプレビュー URL を PR にコメントする（静的アセットのみ・課金ゼロ構成）。
 エージェント向けの詳しいルールは [CLAUDE.md](CLAUDE.md)（= AGENTS.md）。
