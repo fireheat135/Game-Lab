@@ -7,5 +7,5 @@ const executablePath = process.env.PW_CHROMIUM_PATH || undefined;
 export default defineConfig({
   testDir: "e2e",
   use: { baseURL: "http://localhost:4173", launchOptions: { executablePath } },
-  webServer: { command: "npm run build && npx vite preview --port 4173 --strictPort", url: "http://localhost:4173", reuseExistingServer: !process.env.CI },
+  webServer: { command: "VITE_E2E=1 npm run build && npx vite preview --port 4173 --strictPort", url: "http://localhost:4173", reuseExistingServer: !process.env.CI },
 });

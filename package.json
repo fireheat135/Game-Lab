@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "test:tools": "python3 -m unittest discover -s tools -p 'test_*.py'"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",
