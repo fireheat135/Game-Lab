@@ -17,5 +17,7 @@
 | 隕石よけ | `/` | 落ちてくる隕石を ←→ で避ける。Space でリトライ |
 | FORMATION HAND | `/games/formation/` | 深海の群れを撃つ順番で役をつくる隊列シューティング × ローグライト（試作）。調整値はすべて URL クエリで変更可 |
 
-公開: ブランチにプッシュすると Cloudflare Workers Builds がプレビュー URL を PR にコメントする（静的アセットのみ・課金ゼロ構成）。
+公開（Cloudflare Workers Builds、静的アセットのみ・課金ゼロ構成）:
+- 本番（`main`）: https://game-lab.saikyo-koryaku-lab.workers.dev/ ・ FORMATION HAND は `/games/formation/`
+- ブランチ: プッシュするとプレビューがビルドされ、PR にコメントされる
 エージェント向けの詳しいルールは [CLAUDE.md](CLAUDE.md)（= AGENTS.md）。

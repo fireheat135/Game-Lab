@@ -47,6 +47,7 @@
 - `public/_headers` の CSP は `'self'` のみ。外部 CDN・外部通信を足さない。DOM は `textContent`（`innerHTML` 禁止）
 - Cloudflare のビルドログは GitHub のチェックに本文が出ない。失敗時は推測で直さず、まずユーザーにログ末尾を貼ってもらう
 - ブランチのビルドは `npx wrangler preview`（`previews` ブロック必須）。プレビュー URL はダッシュボードで workers.dev / Preview URLs を有効化して出る
+- 本番 URL は https://game-lab.saikyo-koryaku-lab.workers.dev （サブドメインはメール由来ではない。推測せずデプロイログで確認）。本番確認はこのホストに Playwright で実操作（フックは無いので `?fire=0&speed=0` などで条件を作る）
 
 ## GitHub
 - `.github/workflows/` は Claude からプッシュ不可 → コピペ用ブロックでユーザーに渡す
