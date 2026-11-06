@@ -15,8 +15,14 @@ async function data(page: Page) {
   };
 }
 
+/** Enter is handled on the next frame: wait until play before calling hooks (they ignore other phases). */
+async function start(page: Page) {
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await data(page)).phase).toBe("play");
+}
+
 test("preview → play, move, shoot a real bullet into the formation", async ({ page }) => {
-  await page.goto("/formation/?test&seed=3");
+  await page.goto("/games/formation/?test&seed=3");
   await expect(page.locator("#game")).toHaveAttribute("data-phase", "preview");
   await expect(page.locator("#game")).toHaveAttribute("data-sprites", "ready");
   await page.screenshot({ path: "test-results/formation-preview.png" });
@@ -39,8 +45,8 @@ test("preview → play, move, shoot a real bullet into the formation", async ({ 
 });
 
 test("five kills score a hand; X cancels the queue", async ({ page }) => {
-  await page.goto("/formation/?test&seed=3&k=1000");
-  await page.keyboard.press("Enter");
+  await page.goto("/games/formation/?test&seed=3&k=1000");
+  await start(page);
   await hook(page, "calm");
   for (const col of [0, 1]) await hook(page, "kill", col);
   // data-* attributes refresh on the next frame, so always poll after a hook call.
@@ -57,8 +63,8 @@ test("five kills score a hand; X cancels the queue", async ({ page }) => {
 });
 
 test("query params change the rules: queue=3 scores after three kills", async ({ page }) => {
-  await page.goto("/formation/?test&seed=3&queue=3&k=1000");
-  await page.keyboard.press("Enter");
+  await page.goto("/games/formation/?test&seed=3&queue=3&k=1000");
+  await start(page);
   await hook(page, "calm");
   for (const col of [0, 1, 2]) await hook(page, "kill", col);
   await expect.poll(async () => (await data(page)).score).toBeGreaterThan(0);
@@ -66,8 +72,8 @@ test("query params change the rules: queue=3 scores after three kills", async ({
 });
 
 test("reaching the target clears the stage and advances", async ({ page }) => {
-  await page.goto("/formation/?test&seed=3&k=0.001");
-  await page.keyboard.press("Enter");
+  await page.goto("/games/formation/?test&seed=3&k=0.001");
+  await start(page);
   await hook(page, "calm");
   for (const col of [0, 1, 2, 3, 4]) await hook(page, "kill", col);
   await expect.poll(async () => (await data(page)).phase).toBe("clear");
@@ -77,8 +83,8 @@ test("reaching the target clears the stage and advances", async ({ page }) => {
 });
 
 test("losing every shield ends the run with a report; Enter restarts", async ({ page }) => {
-  await page.goto("/formation/?test&seed=3&shields=1");
-  await page.keyboard.press("Enter");
+  await page.goto("/games/formation/?test&seed=3&shields=1");
+  await start(page);
   await hook(page, "calm");
   await hook(page, "hitPlayer");
   await expect.poll(async () => (await data(page)).phase).toBe("over");
@@ -90,13 +96,30 @@ test("losing every shield ends the run with a report; Enter restarts", async ({ 
 });
 
 test("the panel edits the URL query", async ({ page }) => {
-  await page.goto("/formation/?test&seed=3");
-  const input = page.locator('#param-table input[name="queue"]');
+  await page.goto("/games/formation/?test&seed=3");
+  const input = page.locator('#params-body input[name="queue"]');
   await expect(input).toHaveValue("5");
   await input.fill("4");
-  await page.locator("#apply").click();
+  await page.getByRole("button", { name: "適用して再読み込み" }).click();
   await expect(page).toHaveURL(/queue=4/);
   await expect(page).toHaveURL(/seed=3/);
-  await expect(page.locator('#param-table input[name="queue"]')).toHaveValue("4");
+  await expect(page.locator('#params-body input[name="queue"]')).toHaveValue("4");
   await expect(page.locator("#query")).toContainText("queue=4");
+});
+
+test("P pauses and resumes; the hint outline needs no input", async ({ page }) => {
+  await page.goto("/games/formation/?test&seed=3");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await data(page)).phase).toBe("play");
+  await page.keyboard.press("p");
+  await expect(page.locator("#game")).toHaveAttribute("data-paused", "true");
+  await page.screenshot({ path: "test-results/formation-paused.png" });
+  await page.keyboard.press("p");
+  await expect(page.locator("#game")).toHaveAttribute("data-paused", "false");
+});
+
+test("hand table lists current values from the query", async ({ page }) => {
+  await page.goto("/games/formation/?flush.chips=777");
+  await page.locator("#hands-box summary").click();
+  await expect(page.locator("#hands")).toContainText("777");
 });
