@@ -1,11 +1,13 @@
 import { expect, test } from "@playwright/test";
 
-test("game loads sprites, moves the ship, progresses and can retry", async ({ page }) => {
-  await page.goto("/");
+// ?test exposes window.__gameTest (deterministic hooks); ?seed fixes the RNG.
+test("game loads sprites, moves the ship, collides and can retry", async ({ page }) => {
+  await page.goto("/?test&seed=1");
   const canvas = page.locator("#game");
   const data = async () => ({
     x: Number(await canvas.getAttribute("data-x")),
     score: Number(await canvas.getAttribute("data-score")),
+    blocks: Number(await canvas.getAttribute("data-blocks")),
     over: (await canvas.getAttribute("data-over")) === "true",
   });
   await expect(canvas).toHaveAttribute("data-sprites", "ready");
@@ -16,13 +18,15 @@ test("game loads sprites, moves the ship, progresses and can retry", async ({ pa
   await page.keyboard.up("ArrowLeft");
   expect((await data()).x).toBeLessThan(x0);
 
-  // Rocks are random: the run either scores or ends in a collision — both prove the loop runs.
-  await expect.poll(async () => { const d = await data(); return d.score > 0 || d.over; }, { timeout: 30_000 }).toBe(true);
+  // Rocks spawn over time (expected ~2.5/s; P(no spawn in 10s) ≈ e^-25).
+  await expect.poll(async () => (await data()).blocks, { timeout: 10_000 }).toBeGreaterThan(0);
   await page.screenshot({ path: "test-results/game.png" });
 
-  // Play until game over, then Space restarts with a fresh state.
-  await expect.poll(async () => (await data()).over, { timeout: 60_000 }).toBe(true);
+  // Deterministic collision instead of waiting for a random hit.
+  await page.evaluate(() => (window as unknown as { __gameTest: { hitPlayer(): void } }).__gameTest.hitPlayer());
+  await expect.poll(async () => (await data()).over).toBe(true);
+
   await page.keyboard.press(" ");
   await expect.poll(async () => (await data()).over).toBe(false);
-  expect((await data()).score).toBeLessThanOrEqual(1);
+  expect((await data()).score).toBe(0);
 });
