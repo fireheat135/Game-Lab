@@ -215,6 +215,6 @@ describe("bot simulation (企画書 §12 段階0)", () => {
     const rep = simulateRuns(P, 200, "greedy");
     expect(Object.values(rep.handRate).reduce((s, v) => s + v, 0)).toBeCloseTo(1);
     expect(rep.sectorReached.length).toBe(200);
-    if (process.env.SIM_REPORT) for (const policy of ["greedy", "column", "row"] as const) console.log(policy, JSON.stringify(simulateRuns(P, 500, policy), null, 1));
+    if ((globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.SIM_REPORT) for (const policy of ["greedy", "column", "row"] as const) console.log(policy, JSON.stringify(simulateRuns(P, 500, policy), null, 1));
   });
 });
