@@ -16,7 +16,7 @@ export const GLOWS: readonly { id: number; name: string; hex: string; sprite: st
 export type BulletId = "shot" | "pierce" | "spread" | "bomb" | "dye";
 export const BULLETS: readonly { id: BulletId; name: string; icon: string; rule: string; price: number }[] = [
   { id: "shot", name: "通常弾", icon: "│", rule: "列のいちばん下に当たる", price: 2 },
-  { id: "pierce", name: "貫通弾", icon: "┃", rule: "列の下から3体を貫く", price: 4 },
+  { id: "pierce", name: "貫通弾", icon: "⇑", rule: "列の下から3体を貫く", price: 4 },
   { id: "spread", name: "拡散弾", icon: "Ψ", rule: "その列と左右の列の下に当たる", price: 4 },
   { id: "bomb", name: "爆雷", icon: "✸", rule: "当たった周り3×3を巻き込む", price: 6 },
   { id: "dye", name: "染料弾", icon: "◐", rule: "当たった敵の上下左右を同じ色に染めてから弾く", price: 5 },
@@ -48,11 +48,11 @@ export const DEPTHS: readonly { depth: number; meters: number; rows: number; arm
 export const STAGES_PER_DEPTH = 3;
 
 // ---- PARAMS: every tunable, one number per key (URL-editable).
-// Sink / cluster defaults come from `npm run sim:abyss` (no shop, 24 runs): mashing one column clears ~2 of 12
-// stages, choosing the best column ~5.4 — thinking pays ~2.4×, and finishing needs shop upgrades.
-type ScalarKey = "seed" | "cols" | "colors" | "cluster" | "chainMin" | "base" | "shotDrop" | "shuffleDrop" | "drift"
+// Sink / cluster / clearRatio defaults come from `npm run sim:abyss` (no shop, 30 runs): mashing one column
+// clears ~2.5 of 12 stages, best-column play ~5.8, two-shot lookahead ~7.2; nobody finishes without the shop.
+type ScalarKey = "seed" | "cols" | "colors" | "cluster" | "chainMin" | "base" | "clearRatio" | "shotDrop" | "shuffleDropPerCard" | "drift" | "touchMove"
   | "speed" | "warn" | "ebullet" | "shields" | "cd" | "move" | "preview" | "gold" | "hints" | "sound" | "hitstop";
-export type ParamKey = ScalarKey | `price.${BulletId}` | `price.${PartId}` | "price.remove" | "price.reroll"
+export type ParamKey = ScalarKey | `price.${BulletId}` | `price.${PartId}` | "price.remove" | "price.reroll" | "price.repair"
   | `deck.${BulletId}` | `rows.${number}` | `armor.${number}` | `fire.${number}`;
 export type AbyssParams = Params<ParamKey>;
 
@@ -71,8 +71,11 @@ export const PARAMS: readonly ParamDef<ParamKey>[] = [
   ]),
   s("chainMin", "連鎖", "落下後の連鎖に必要な同色数", 4, 2, 9, true),
   s("base", "連鎖", "1体あたりの基本点", 10, 1, 1e6),
-  s("shotDrop", "沈下", "1発ごとに沈む量（px）", 14, 0, 60),
-  s("shuffleDrop", "沈下", "山札を切り直すと沈む量（px）", 45, 0, 200),
+  s("clearRatio", "群れ", "この割合を倒すと残りは逃げて突破 0〜1", 0.85, 0.1, 1),
+  s("shotDrop", "沈下", "1発ごとに沈む量（px）", 22, 0, 80),
+  // Reshuffle sink = this × deck size, so the average sink per shot is the same for any deck size:
+  // buying bullets does not buy extra shots, and thinning the deck is a real choice.
+  s("shuffleDropPerCard", "沈下", "切り直しで沈む量（デッキ1枚あたり px）", 5.5, 0, 50),
   s("drift", "沈下", "時間で沈む速さ（px/秒）", 1.5, 0, 50),
   s("speed", "群れ", "横移動の速さ（px/秒）", 22, 0, 300),
   s("warn", "敵弾", "予告時間（秒）", 0.7, 0, 3),
@@ -80,6 +83,7 @@ export const PARAMS: readonly ParamDef<ParamKey>[] = [
   s("shields", "探査艇", "シールド", 3, 1, 20, true),
   s("cd", "探査艇", "射撃の間隔（秒）", 0.3, 0.05, 2),
   s("move", "探査艇", "移動速度（px/秒）", 280, 50, 1000),
+  s("touchMove", "探査艇", "指で狙うときの移動速度（px/秒）", 900, 50, 3000),
   s("preview", "デッキ", "見える次の弾の数", 3, 1, 8, true),
   ...BULLETS.map(b => ({ key: `deck.${b.id}` as const, group: "デッキ", label: `初期デッキの${b.name}`, def: STARTING_DECK.find(d => d.bullet === b.id)?.count ?? 0, min: 0, max: 30, int: true })),
   s("gold", "ショップ", "ステージ突破のゴールド", 4, 0, 1000, true),
@@ -87,6 +91,7 @@ export const PARAMS: readonly ParamDef<ParamKey>[] = [
   ...PARTS.map(p => ({ key: `price.${p.id}` as const, group: "ショップ", label: `${p.name}の値段`, def: p.price, min: 0, max: 1000, int: true })),
   { key: "price.remove", group: "ショップ", label: "弾を1枚抜く値段", def: 3, min: 0, max: 1000, int: true },
   { key: "price.reroll", group: "ショップ", label: "品ぞろえ更新の値段", def: 2, min: 0, max: 1000, int: true },
+  { key: "price.repair", group: "ショップ", label: "シールド修理（+1）の値段", def: 5, min: 0, max: 1000, int: true },
   s("hints", "表示", "狙った先で弾ける塊を表示（1 = する）", 1, 0, 1, true),
   s("sound", "表示", "効果音（1 = 鳴らす）", 1, 0, 1, true),
   s("hitstop", "表示", "連鎖のヒットストップ（秒/段）", 0.05, 0, 0.5),
