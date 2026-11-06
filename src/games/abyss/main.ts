@@ -10,7 +10,7 @@ import { attachTouchAim, steerTo } from "../../engine/touchAim";
 import { allCards } from "./deck";
 import { lowestRow } from "./grid";
 import { BULLETS, GLOWS, PARAMS, bulletOf, partOf, type AbyssParams, type BulletId } from "./rules";
-import { buyBullet, buyPart, createRun, removeCard, reroll, shootColumn, update, PLAYER_Y, type Run } from "./run";
+import { buyBullet, buyPart, createRun, removeCard, reroll, shootColumn, update, PLAYER_W, PLAYER_Y, W, type Run } from "./run";
 import { createView, placeName } from "./view";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game")!;
@@ -113,9 +113,13 @@ function frame(now: number) {
   if (advance && (run.phase === "over" || run.phase === "win")) { run = createRun(newRunParams()); reported = false; }
   else if (!paused) {
     const keysDx = (input.held("right") ? 1 : 0) - (input.held("left") ? 1 : 0);
-    const steer = run.phase === "play" ? steerTo(run.x, touch.target(), touch.released()) : { dx: 0, fire: false, arrived: false };
-    if (steer.fire || run.phase !== "play") touch.done();
+    const steer = run.phase === "play"
+      ? steerTo(run.x, touch.target(), touch.released(), run.p.move * dt, PLAYER_W / 2, W - PLAYER_W / 2)
+      : { dx: 0, fire: false, arrived: false };
+    const shotsBefore = run.stats.shots;
     run = update(run, { dx: keysDx || steer.dx, fire: input.held("fire") || steer.fire, cancel: false, advance }, dt);
+    // keep a released touch pending until the shot is actually fired (bullet in flight / cooldown / hitstop)
+    if (run.phase !== "play" || (steer.fire && run.stats.shots > shotsBefore)) touch.done();
   }
   input.endFrame();
   for (const e of run.events) sfx.play(e.type, "step" in e ? e.step : 0);

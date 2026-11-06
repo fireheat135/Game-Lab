@@ -7,7 +7,7 @@ import { BULLETS, DEPTHS, PARTS, STAGES_PER_DEPTH, type AbyssParams, type Bullet
 // ---- screen geometry (canvas is W × H)
 export const W = 480, H = 640;
 export const TOP_Y = 96, LINE_Y = 520, PLAYER_Y = 560, PLAYER_W = 32;
-const MARGIN = 8, BULLET_SPEED = 720, INVULN_SECONDS = 1, HIT_FLASH_SECONDS = 0.35, EFFECT_SECONDS = 0.6;
+const MARGIN = 8, BULLET_SPEED = 720, INVULN_SECONDS = 1, HIT_FLASH_SECONDS = 0.35, EFFECT_SECONDS = 0.6, MAX_HITSTOP = 0.3;
 
 export function layout(p: AbyssParams, rows: number) {
   const cellW = Math.min(52, Math.floor((W - 2 * MARGIN) / (p.cols + 1)));
@@ -88,7 +88,7 @@ export function applyHit(r: Run, type: BulletId, col: number): Run {
   let next: Run = {
     ...r, grid: res.grid, score: r.score + res.score, stageScore: r.stageScore + res.score, gold,
     effects: [...r.effects, ...effects], events: [...r.events, ...events],
-    freezeT: chainSteps > 0 ? r.p.hitstop * res.steps.length : r.freezeT,
+    freezeT: chainSteps > 0 ? Math.min(MAX_HITSTOP, r.p.hitstop * res.steps.length) : r.freezeT,
     lastChain: chainSteps > 0 ? { steps: res.steps.length, score: res.score, t: 1.6 } : r.lastChain,
     stats: { ...r.stats, kills: r.stats.kills + res.kills, bestChain: Math.max(r.stats.bestChain, res.steps.length) },
   };
@@ -183,7 +183,8 @@ function moveBullet(r: Run, dt: number): Run {
   const col = columnAt(r, b.x), row = col < 0 ? -1 : lowestRow(r.grid, col);
   if (row >= 0) {
     const hitY = r.fy + (row + 1) * layout(r.p, r.grid.rows).cellH;
-    if (y1 <= hitY) return applyHit({ ...r, bullet: null }, b.type, col);
+    // hit only when the bullet crosses the enemy's bottom edge this frame (a bullet already above never hits)
+    if (b.y >= hitY && y1 <= hitY) return applyHit({ ...r, bullet: null }, b.type, col);
   }
   return { ...r, bullet: y1 < 0 ? null : { ...b, y: y1 } };
 }

@@ -1,14 +1,16 @@
 // Phone controls: drag a finger on the canvas to aim (the ship follows), lift to fire once.
 // Deliberate one-shot firing suits games where every shot costs something.
 
-const ARRIVE_PX = 4;
-
-/** Pure steering step: move toward `target`; when released and arrived, fire once. */
-export function steerTo(x: number, target: number | null, released: boolean): { dx: number; fire: boolean; arrived: boolean } {
+/**
+ * Pure steering step toward `target` (clamped to [minX, maxX], the ship's range). dx is a fraction of a full
+ * step (`maxStep` px this frame), shortened on the last step so the ship never overshoots. When released
+ * and arrived, fire.
+ */
+export function steerTo(x: number, target: number | null, released: boolean, maxStep: number, minX: number, maxX: number): { dx: number; fire: boolean; arrived: boolean } {
   if (target === null) return { dx: 0, fire: false, arrived: false };
-  const diff = target - x;
-  if (Math.abs(diff) <= ARRIVE_PX) return { dx: 0, fire: released, arrived: true };
-  return { dx: Math.sign(diff), fire: false, arrived: false };
+  const diff = Math.min(Math.max(target, minX), maxX) - x;
+  if (Math.abs(diff) <= 0.5) return { dx: 0, fire: released, arrived: true };
+  return { dx: maxStep > 0 ? Math.max(-1, Math.min(1, diff / maxStep)) : 0, fire: false, arrived: false };
 }
 
 export interface TouchAim {

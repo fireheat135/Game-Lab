@@ -226,3 +226,19 @@ describe("run", () => {
     expect(update(r, { ...idle, advance: true }, 0).phase).toBe("win");
   });
 });
+
+describe("review fixes", () => {
+  it("a bullet that already passed above the swarm never hits later (Codex review #3)", () => {
+    let r = play(withP({ speed: 0 }));
+    const alive = r.grid.cells.filter(Boolean).length;
+    r = { ...r, bullet: { x: r.fx + 10, y: r.fy - 40, type: "shot" } };
+    r = update(r, idle, 0.016);
+    expect(r.grid.cells.filter(Boolean).length).toBe(alive);
+  });
+  it("long chains cap the hitstop at 0.3 s", () => {
+    let r = play(withP({ hitstop: 0.2 }));
+    r = { ...r, grid: fromRows(["1......", "1......", "21.....", "21....."]) };
+    r = shootColumn(r, 0);
+    expect(r.freezeT).toBeLessThanOrEqual(0.3);
+  });
+});
