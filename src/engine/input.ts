@@ -57,6 +57,13 @@ export function createInput<A extends string>(map: ActionMap<A>, pad?: Element |
     for (const type of ["pointerup", "pointerleave", "pointercancel"] as const) {
       button.addEventListener(type, e => state.release(`pointer:${e.pointerId}`));
     }
+    // Keyboard / assistive-tech activation (Tab + Enter/Space) fires a click with detail 0. Pointer clicks
+    // (detail ≥ 1) were already handled by pointerdown, so they are skipped to avoid a double press.
+    button.addEventListener("click", e => {
+      if (e.detail !== 0) return;
+      state.press(action, "click");
+      state.release("click");
+    });
   }
   return { held: state.held, pressed: state.pressed, endFrame: state.endFrame };
 }

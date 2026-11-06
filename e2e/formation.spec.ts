@@ -77,11 +77,17 @@ test("reaching the target clears the stage and advances", async ({ page }) => {
   await hook(page, "calm");
   for (const col of [0, 1, 2, 3, 4]) await hook(page, "kill", col);
   await expect.poll(async () => (await data(page)).phase).toBe("clear");
-  await confirmUntil(page, d => d.stage === 1);
-  // Space must not advance (mashing fire would skip the next target)
+  await page.waitForTimeout(500);
   await page.keyboard.press(" ");
-  await page.waitForTimeout(200);
-  expect((await data(page)).stage).toBe(1);
+  await page.waitForTimeout(250);
+  expect((await data(page)).phase).toBe("clear"); // results stay readable
+  await confirmUntil(page, d => d.stage === 1);
+  expect((await data(page)).phase).toBe("preview");
+  // Space must not advance, even after the 350 ms guard (mashing fire would skip the next target)
+  await page.waitForTimeout(500);
+  await page.keyboard.press(" ");
+  await page.waitForTimeout(250);
+  expect((await data(page)).phase).toBe("preview");
 });
 
 test("losing every shield ends the run with a report; Enter restarts", async ({ page }) => {
@@ -137,4 +143,16 @@ test.describe("phone", () => {
     expect(box.height).toBeGreaterThanOrEqual(56);
     await page.screenshot({ path: "test-results/formation-phone.png" });
   });
+});
+
+test("pad buttons work from the keyboard (Tab + Enter), e.g. 決定 starts the stage", async ({ page }) => {
+  await page.goto("/games/formation/?test&seed=3");
+  await expect(page.locator("#game")).toHaveAttribute("data-phase", "preview");
+  await page.waitForTimeout(500); // past the anti-mash guard
+  await page.locator('#pad [data-action="confirm"]').focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await data(page)).phase).toBe("play");
+  await page.locator('#pad [data-action="pause"]').focus();
+  await page.keyboard.press(" ");
+  await expect(page.locator("#game")).toHaveAttribute("data-paused", "true");
 });
