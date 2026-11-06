@@ -10,7 +10,7 @@ import { attachTouchAim, steerTo } from "../../engine/touchAim";
 import { allCards } from "./deck";
 import { lowestRow } from "./grid";
 import { BULLETS, GLOWS, PARAMS, bulletOf, partOf, type AbyssParams, type BulletId } from "./rules";
-import { buyBullet, buyPart, createRun, removeCard, reroll, shootColumn, update, PLAYER_W, PLAYER_Y, W, type Run } from "./run";
+import { buyBullet, buyPart, createRun, removeCard, repair, reroll, shootColumn, update, PLAYER_W, PLAYER_Y, W, type Run } from "./run";
 import { createView, placeName } from "./view";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game")!;
@@ -33,6 +33,8 @@ exposeTestHooks("__abyssTest", {
   calm: () => { run = { ...run, calm: true, warns: [], ebullets: [] }; },
   gold: (n: number) => { run = { ...run, gold: n }; },
   hitPlayer: () => { run = { ...run, invuln: 0, ebullets: [...run.ebullets, { x: run.x, y: PLAYER_Y - 2 }] }; },
+  shots: () => run.stats.shots,
+  damage: () => { run = { ...run, shields: Math.max(1, run.shields - 1) }; },
 });
 
 // ---- sprites: one creature per glow color, tinted
@@ -42,13 +44,15 @@ Promise.all([
   ...GLOWS.map(g => loadSprite(g.sprite).then(img => sprites.set(g.id, img))),
   loadSprite("sub").then(img => { subImg = img; }),
 ]).then(() => { canvas.dataset.sprites = "ready"; }, () => { canvas.dataset.sprites = "fallback"; });
-const view = createView(canvas.getContext("2d")!, sprites, () => subImg, { touch: matchMedia("(pointer: coarse)").matches });
+// Canvas text must stay ≥ 12 CSS px even when the canvas is shrunk on small phones.
+const minFont = () => Math.min(22, Math.max(14, (12 * canvas.width) / Math.max(1, canvas.clientWidth)));
+const view = createView(canvas.getContext("2d")!, sprites, () => subImg, { touch: matchMedia("(pointer: coarse)").matches, minFont });
 
 // ---- HTML shop (buttons: keyboard / screen-reader friendly). Rebuilt only when its contents change.
 const shopEl = document.querySelector<HTMLElement>("#shop")!;
 let shopKey = "";
-function button(label: string, sub: string, onClick: () => Run, disabled: boolean): HTMLButtonElement {
-  const b = Object.assign(document.createElement("button"), { type: "button", disabled });
+function button(label: string, sub: string, onClick: () => Run, disabled: boolean, className = ""): HTMLButtonElement {
+  const b = Object.assign(document.createElement("button"), { type: "button", disabled, className });
   b.append(Object.assign(document.createElement("strong"), { textContent: label }), Object.assign(document.createElement("span"), { textContent: sub }));
   b.addEventListener("click", () => { run = onClick(); sfx.play("buy"); });
   return b;
@@ -59,7 +63,7 @@ function section(title: string, ...children: Node[]) {
   return s;
 }
 function renderShop() {
-  const key = run.phase === "shop" ? JSON.stringify([run.shop, run.gold, run.parts, allCards(run.deck).sort()]) : "";
+  const key = run.phase === "shop" ? JSON.stringify([run.shop, run.gold, run.shields, run.parts, allCards(run.deck).sort()]) : "";
   if (key === shopKey) return;
   shopKey = key;
   shopEl.hidden = run.phase !== "shop";
@@ -71,18 +75,23 @@ function renderShop() {
   const parts = run.shop.parts.map((id, i) => id
     ? button(partOf(id).name, `${partOf(id).rule}　◎${p[`price.${id}`]}`, () => buyPart(run, i), run.gold < p[`price.${id}`])
     : Object.assign(document.createElement("div"), { className: "sold", textContent: "購入済み" }));
-  const deck = BULLETS.filter(b => cards.includes(b.id)).map(b => button(`${b.icon} ${b.name} ×${cards.filter(c => c === b.id).length}`, `1枚抜く ◎${p["price.remove"]}`, () => removeCard(run, b.id as BulletId), run.gold < p["price.remove"] || cards.length <= 1));
+  const deck = BULLETS.filter(b => cards.includes(b.id)).map(b => button(`${b.icon} ${b.name} ×${cards.filter(c => c === b.id).length}`, `1枚抜く ◎${p["price.remove"]}`, () => removeCard(run, b.id as BulletId), run.gold < p["price.remove"] || cards.length <= 1, "remove"));
   const owned = run.parts.length ? run.parts.map(id => `${partOf(id).name}：${partOf(id).rule}`).join("／") : "なし";
   const reroll_ = button("品ぞろえを更新", `◎${p["price.reroll"]}`, () => reroll(run), run.gold < p["price.reroll"]);
+  const repair_ = button(`シールド修理 ${"◆".repeat(run.shields)}${"◇".repeat(Math.max(0, p.shields - run.shields))}`, `+1　◎${p["price.repair"]}`, () => repair(run), run.gold < p["price.repair"] || run.shields >= p.shields);
+  const actions = document.createElement("div"); // sticky bar: the main action stays visible while the dock scrolls
+  actions.className = "dock-actions";
   const next = button("次の群れへ潜る", "Enter でも可", () => update(run, { dx: 0, fire: false, cancel: false, advance: true }, 0), false);
   next.classList.add("primary");
+  actions.append(reroll_, next);
   shopEl.replaceChildren(
     Object.assign(document.createElement("h2"), { textContent: `補給ドック　◎ ${run.gold}` }),
     section("弾を買う（デッキに入る）", ...bullets),
     section("部品を買う（ラン中ずっと有効）", ...parts),
-    section(`デッキ（${cards.length}枚）：薄いほど切り直しが早く、濃いほど強い弾が来にくい`, ...deck),
+    section("整備", repair_),
+    section(`デッキ（${cards.length}枚）：切り直しで沈む量は枚数に比例。抜くほど強い弾が来やすい`, ...deck),
     Object.assign(document.createElement("p"), { className: "owned", textContent: `所持部品：${owned}` }),
-    section("", reroll_, next),
+    actions,
   );
 }
 
@@ -114,10 +123,12 @@ function frame(now: number) {
   else if (!paused) {
     const keysDx = (input.held("right") ? 1 : 0) - (input.held("left") ? 1 : 0);
     const steer = run.phase === "play"
-      ? steerTo(run.x, touch.target(), touch.released(), run.p.move * dt, PLAYER_W / 2, W - PLAYER_W / 2)
+      ? steerTo(run.x, touch.target(), touch.released(), run.p.touchMove * dt, PLAYER_W / 2, W - PLAYER_W / 2)
       : { dx: 0, fire: false, arrived: false };
     const shotsBefore = run.stats.shots;
-    run = update(run, { dx: keysDx || steer.dx, fire: input.held("fire") || steer.fire, cancel: false, advance }, dt);
+    // touch steering moves at touchMove (dx is relative to the keyboard speed); Space fires once per press
+    const touchDx = steer.dx * (run.p.touchMove / run.p.move);
+    run = update(run, { dx: keysDx || touchDx, fire: input.pressed("fire") || steer.fire, cancel: false, advance }, dt);
     // keep a released touch pending until the shot is actually fired (bullet in flight / cooldown / hitstop)
     if (run.phase !== "play" || (steer.fire && run.stats.shots > shotsBefore)) touch.done();
   }

@@ -144,7 +144,7 @@ describe("run", () => {
     expect(r.deck.draw).toHaveLength(0);
     const before = r.fy;
     r = shootColumn(r, 3); // empty draw pile → reshuffle
-    expect(r.fy).toBeCloseTo(before + P.shotDrop + P.shuffleDrop);
+    expect(r.fy).toBeCloseTo(before + P.shotDrop + 2 * P.shuffleDropPerCard); // 2 cards in the deck
     expect(r.shuffles).toBe(1);
   });
   it("a real bullet flies up and resolves on the lowest enemy of the column under the ship", () => {
@@ -240,5 +240,50 @@ describe("review fixes", () => {
     r = { ...r, grid: fromRows(["1......", "1......", "21.....", "21....."]) };
     r = shootColumn(r, 0);
     expect(r.freezeT).toBeLessThanOrEqual(0.3);
+  });
+});
+
+describe("playtest round 2 (ABYSS)", () => {
+  it("reshuffle sink scales with deck size, so the average sink per shot does not depend on deck size", () => {
+    const sinkPerShot = (cards: number) => {
+      let r = play(withP({ "deck.shot": cards, "deck.spread": 0, "deck.pierce": 0, "deck.bomb": 0, "cols": 10, "rows.1": 9 }));
+      const fy = r.fy;
+      for (let i = 0; i < cards * 2 + 1; i++) r = shootColumn({ ...r, phase: "play" }, i % r.grid.cols);
+      return (r.fy - fy) / (cards * 2 + 1);
+    };
+    expect(sinkPerShot(4)).toBeCloseTo(sinkPerShot(12), 0);
+  });
+  it("killing clearRatio of the swarm clears the stage (no single-enemy mop-up)", () => {
+    let r = play(withP({ clearRatio: 0.5 }));
+    const total = r.grid.cells.filter(Boolean).length;
+    for (let i = 0; i < 200 && r.phase === "play"; i++) r = shootColumn({ ...r, fy: 96 }, r.grid.cells.findIndex(Boolean) % r.grid.cols);
+    expect(r.phase).toBe("clear");
+    expect(r.stats.kills).toBeGreaterThanOrEqual(Math.ceil(total * 0.5));
+    expect(r.grid.cells.every(c => !c)).toBe(true); // the rest flee
+  });
+  it("sinkPreview predicts where the swarm bottom will be after the next shot, flagging a reshuffle", async () => {
+    const { sinkPreview } = await import("../src/games/abyss/run");
+    let r = play(withP({ "deck.shot": 1, "deck.spread": 0, "deck.pierce": 0, "deck.bomb": 0 }));
+    expect(sinkPreview(r)).toEqual({ y: bottomY(r) + P.shotDrop, reshuffle: false });
+    r = shootColumn(r, 3);
+    expect(sinkPreview(r)).toEqual({ y: bottomY(r) + P.shotDrop + P.shuffleDropPerCard, reshuffle: true });
+  });
+  it("shop offers have no duplicate bullets; repair restores one shield up to the max", async () => {
+    const { repair } = await import("../src/games/abyss/run");
+    for (let seed = 1; seed < 20; seed++) {
+      let r = update(clearStage(play(withP({ seed }))), { ...idle, advance: true }, 0);
+      const b = r.shop!.bullets;
+      expect(new Set(b).size).toBe(b.length);
+      r = { ...r, gold: 100, shields: 1 };
+      r = repair(r);
+      expect(r.shields).toBe(2);
+      expect(repair({ ...r, shields: P.shields }).shields).toBe(P.shields);
+    }
+  });
+  it("chains put a floating label at the chain's position", () => {
+    let r = play();
+    r = { ...r, grid: fromRows(["1......", "1......", "21.....", "21....."]) };
+    r = shootColumn(r, 0);
+    expect(r.floaters.some(f => f.text.includes("2連鎖"))).toBe(true);
   });
 });

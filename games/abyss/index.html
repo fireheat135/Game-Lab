@@ -21,6 +21,7 @@
       #pad .move button { min-width: 64px; min-height: 56px; font-size: 20px; }
       #pad .fire { min-width: 120px; min-height: 64px; font-size: 18px; font-weight: 700; background: #1d3f6e; }
       #pad button { min-width: 44px; min-height: 44px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: inherit; user-select: none; touch-action: none; }
+      #stage { position: relative; width: min(480px, 100%); } /* before the phone media queries, which override it */
       .touch-hint { margin: 0; color: var(--dim); font-size: 13px; text-align: center; }
       /* Phones: the game fills the screen height (canvas 3:4 + one row of buttons), settings scroll below. */
       @media (pointer: fine) { .touch-hint { display: none; } }
@@ -33,6 +34,14 @@
         #pad .sys { justify-content: center; }
         #pad .sys button { min-height: 44px; min-width: 96px; font-size: 15px; }
         aside { padding: 0 16px; }
+      }
+      /* Phone in landscape: game uses the full height, buttons sit beside it. */
+      @media (pointer: coarse) and (orientation: landscape) {
+        main { flex-wrap: nowrap; align-items: flex-start; padding: 4px 8px; }
+        #play { flex-direction: row; align-items: flex-end; width: auto; }
+        #stage { width: calc((100dvh - 8px) * 0.75); }
+        #pad { width: auto; flex-direction: column; }
+        #pad .sys { flex-direction: column; }
       }
       #pad button:active { background: #16325a; }
       aside { flex: 1 1 320px; max-width: 470px; font-size: 13px; }
@@ -57,8 +66,7 @@
       code, pre { font-family: ui-monospace, monospace; word-break: break-all; white-space: pre-wrap; }
       pre { user-select: text; -webkit-user-select: text; background: var(--bg); padding: 8px; border-radius: 6px; max-height: 260px; overflow: auto; margin: 6px 0 0; }
       a { color: var(--link); }
-      #stage { position: relative; width: min(480px, 100%); }
-      #shop { position: absolute; inset: 0; overflow: auto; background: rgba(3,10,24,.96); border-radius: 6px; padding: 12px 14px; box-sizing: border-box; }
+      #shop { scroll-padding-bottom: 96px; position: absolute; inset: 0; overflow: auto; background: rgba(3,10,24,.96); border-radius: 6px; padding: 12px 14px; box-sizing: border-box; }
       #shop h2 { margin: 0 0 6px; font-size: 18px; color: var(--accent); }
       #shop h3 { flex: 1 1 100%; margin: 10px 0 4px; font-size: 13px; color: var(--dim); font-weight: 600; }
       #shop section { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -68,6 +76,9 @@
       #shop button.primary { background: #1d3f6e; border-color: var(--accent); }
       #shop .sold { flex: 1 1 140px; min-height: 52px; display: grid; place-items: center; color: #5f7396; border: 1px dashed var(--line); border-radius: 8px; }
       #shop .owned { color: var(--dim); font-size: 12px; }
+      #shop button.remove { border-style: dashed; background: transparent; }
+      #shop button.remove strong { color: #ffb4b4; }
+      #shop .dock-actions { position: sticky; bottom: -12px; display: flex; gap: 6px; margin: 12px -14px -12px; padding: 10px 14px; background: rgba(3,10,24,.98); border-top: 1px solid var(--line); }
     </style>
   </head>
   <body>
@@ -76,7 +87,7 @@
         <div id="stage"><canvas id="game" width="480" height="640" aria-label="ABYSS CHAIN のプレイ画面"></canvas><div id="shop" hidden aria-live="polite"></div></div>
         <div id="pad" aria-label="タッチ操作">
           <div class="sys"><button data-action="pause">一時停止</button><button data-action="confirm">決定</button></div>
-          <p class="touch-hint">群れの上を指でなぞって狙い、離すと発射</p>
+          <p class="touch-hint">画面下を左右になぞって狙い、離すと発射</p>
         </div>
       </section>
       <aside>
@@ -84,7 +95,7 @@
         <p class="sub">弾デッキで撃ち、同じ色の群れを連鎖で崩す深海シューティング（試作）</p>
         <div class="keys">
           <kbd>←</kbd><kbd>→</kbd> / <kbd>A</kbd><kbd>D</kbd> 移動　<kbd>Space</kbd> 撃つ　<kbd>Enter</kbd> 開始・次へ　<kbd>P</kbd> 一時停止<br />
-          スマホ：群れの上を<b>指でなぞって狙い、離すと発射</b>。画面タップで開始・次へ。<br />
+          スマホ：画面下を<b>左右になぞって狙い、離すと発射</b>（指で群れを隠さない）。画面タップで開始・次へ。<br />
           当てた敵と<b>同じ色でつながった塊</b>がまとめて弾ける。上の敵が落ちて同じ色が<b>4つ</b>つながると連鎖（倍率アップ・◎獲得）。<br />
           弾は下のデッキから順に出る（次の弾が見える）。<b>撃つたびに群れが沈み、山札を切り直すと大きく沈む</b>。金色の枠＝いまの弾で弾ける範囲。<br />
           全滅させると ◎ をもらい、補給ドックで弾・部品を買ってデッキを組む。深度4の3面目を越えればクリア。

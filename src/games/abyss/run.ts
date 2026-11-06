@@ -22,15 +22,17 @@ export interface Bullet { x: number; y: number; type: BulletId }
 export interface Effect { x: number; y: number; color: number; step: number; t: number }
 export type GameEvent = { type: "fire" | "hit" | "shuffle" | "clear" | "over" } | { type: "pop" | "chain"; step: number; count: number };
 export interface Shop { bullets: (BulletId | null)[]; parts: (PartId | null)[] }
+/** Text shown where something happened (e.g. "3連鎖！" at the chain). t counts down. */
+export interface Floater { x: number; y: number; text: string; size: number; t: number }
 
 export interface Run {
   p: AbyssParams; seed: number; phase: Phase; depth: number; stage: number;
-  grid: Grid; fx: number; fy: number; dir: number; x: number; cd: number;
+  grid: Grid; total: number; fx: number; fy: number; dir: number; x: number; cd: number;
   bullet: Bullet | null; deck: Deck; shuffles: number;
   ebullets: { x: number; y: number }[]; warns: { col: number; t: number }[]; fireT: number;
   shields: number; invuln: number; hitT: number; freezeT: number;
   gold: number; score: number; stageScore: number; parts: PartId[]; shop: Shop | null;
-  effects: Effect[]; lastChain: { steps: number; score: number; t: number } | null; events: GameEvent[];
+  effects: Effect[]; floaters: Floater[]; lastChain: { steps: number; score: number; t: number } | null; events: GameEvent[];
   calm: boolean; cause: Cause | null;
   stats: { shots: number; kills: number; bestChain: number; stagesCleared: number };
 }
@@ -44,9 +46,9 @@ function freshStage(r: Pick<Run, "p" | "seed" | "depth">) {
   const g = layout(r.p, grid.rows);
   const fire = r.p[`fire.${d}`];
   return {
-    seed, grid, phase: "preview" as Phase, fx: (W - r.p.cols * g.cellW) / 2, fy: TOP_Y, dir: 1, x: W / 2, cd: 0,
+    seed, grid, total: grid.cells.filter(Boolean).length, phase: "preview" as Phase, fx: (W - r.p.cols * g.cellW) / 2, fy: TOP_Y, dir: 1, x: W / 2, cd: 0,
     bullet: null, shuffles: 0, ebullets: [], warns: [], fireT: fire > 0 ? 1.5 / fire : Infinity,
-    invuln: 0, hitT: 0, freezeT: 0, stageScore: 0, effects: [], lastChain: null, events: [], shop: null,
+    invuln: 0, hitT: 0, freezeT: 0, stageScore: 0, effects: [], floaters: [], lastChain: null, events: [], shop: null,
   };
 }
 
@@ -85,23 +87,40 @@ export function applyHit(r: Run, type: BulletId, col: number): Run {
   const effects: Effect[] = res.steps.flatMap((s, step) => s.popped.map((pop: Pop) => ({ ...cellCenter(r, pop.col, pop.row), color: pop.color, step, t: EFFECT_SECONDS })));
   const events: GameEvent[] = res.steps.map((s, step) => ({ type: step === 0 ? "pop" : "chain", step, count: s.popped.length } as GameEvent));
   const gold = r.gold + chainSteps * (has(r, "vein") ? 2 : 1);
+  const floaters: Floater[] = res.steps.slice(1).map((s, i) => {
+    const pts = s.popped.map(pop => cellCenter(r, pop.col, pop.row));
+    const at = { x: pts.reduce((a, b) => a + b.x, 0) / pts.length, y: pts.reduce((a, b) => a + b.y, 0) / pts.length };
+    return { ...at, text: `${i + 2}連鎖！`, size: 22 + 6 * i, t: 1.2 };
+  });
   let next: Run = {
     ...r, grid: res.grid, score: r.score + res.score, stageScore: r.stageScore + res.score, gold,
-    effects: [...r.effects, ...effects], events: [...r.events, ...events],
+    effects: [...r.effects, ...effects], floaters: [...r.floaters, ...floaters], events: [...r.events, ...events],
     freezeT: chainSteps > 0 ? Math.min(MAX_HITSTOP, r.p.hitstop * res.steps.length) : r.freezeT,
     lastChain: chainSteps > 0 ? { steps: res.steps.length, score: res.score, t: 1.6 } : r.lastChain,
     stats: { ...r.stats, kills: r.stats.kills + res.kills, bestChain: Math.max(r.stats.bestChain, res.steps.length) },
   };
-  if (next.grid.cells.every(c => !c)) {
-    next = { ...next, phase: "clear", gold: next.gold + r.p.gold, bullet: null, ebullets: [], warns: [], events: [...next.events, { type: "clear" }], stats: { ...next.stats, stagesCleared: next.stats.stagesCleared + 1 } };
+  // stage clear: everyone popped, or clearRatio of the swarm is gone (the rest flee — no single-enemy mop-up)
+  const alive = next.grid.cells.filter(Boolean).length;
+  if (alive === 0 || r.total - alive >= Math.ceil(r.total * r.p.clearRatio)) {
+    const fleeing: Effect[] = next.grid.cells.flatMap((c, i) => (c ? [{ ...cellCenter(next, i % next.grid.cols, Math.floor(i / next.grid.cols)), color: c.color, step: 0, t: EFFECT_SECONDS }] : []));
+    next = { ...next, grid: { ...next.grid, cells: next.grid.cells.map(() => null) }, effects: [...next.effects, ...fleeing], phase: "clear", gold: next.gold + r.p.gold, bullet: null, ebullets: [], warns: [], events: [...next.events, { type: "clear" }], stats: { ...next.stats, stagesCleared: next.stats.stagesCleared + 1 } };
   }
   return next;
+}
+
+const shotSink = (r: Run) => r.p.shotDrop * (has(r, "steady") ? 0.5 : 1);
+const reshuffleSink = (r: Run) => r.p.shuffleDropPerCard * allCards(r.deck).length * (has(r, "ballast") ? 0.5 : 1);
+
+/** Where the swarm's bottom will be after the next shot (for the on-screen warning line). */
+export function sinkPreview(r: Run): { y: number; reshuffle: boolean } {
+  const reshuffle = r.deck.draw.length === 0;
+  return { y: bottomY(r) + shotSink(r) + (reshuffle ? reshuffleSink(r) : 0), reshuffle };
 }
 
 /** Draws the next card and sinks the swarm (one shot = one step of pressure). */
 function useCard(r: Run): { run: Run; type: BulletId } {
   const d = draw(r.deck);
-  const sink = r.p.shotDrop * (has(r, "steady") ? 0.5 : 1) + (d.reshuffled ? r.p.shuffleDrop * (has(r, "ballast") ? 0.5 : 1) : 0);
+  const sink = shotSink(r) + (d.reshuffled ? reshuffleSink(r) : 0);
   const events: GameEvent[] = [...r.events, { type: "fire" }, ...(d.reshuffled ? [{ type: "shuffle" } as GameEvent] : [])];
   return { run: { ...r, deck: d.deck, fy: r.fy + sink, shuffles: r.shuffles + (d.reshuffled ? 1 : 0), events, stats: { ...r.stats, shots: r.stats.shots + 1 } }, type: d.bullet };
 }
@@ -121,7 +140,8 @@ function rollShop(r: Run): Run {
   let s = r.seed;
   const pick = <T>(list: readonly T[]): T => { let v: number; [v, s] = rnd(s); return list[Math.floor(v * list.length)]; };
   const buyable = BULLETS.filter(b => b.id !== "shot").map(b => b.id);
-  const bullets = [pick(buyable), pick(buyable), pick(buyable)];
+  const bullets: BulletId[] = [];
+  while (bullets.length < Math.min(3, buyable.length)) { const id = pick(buyable); if (!bullets.includes(id)) bullets.push(id); }
   const free = PARTS.map(p => p.id).filter(id => !r.parts.includes(id));
   const parts: PartId[] = [];
   while (parts.length < Math.min(2, free.length)) { const id = pick(free); if (!parts.includes(id)) parts.push(id); }
@@ -148,6 +168,11 @@ export function removeCard(r: Run, id: BulletId): Run {
   if (r.phase !== "shop" || at < 0 || cards.length <= 1 || r.gold < r.p["price.remove"]) return r;
   cards.splice(at, 1);
   return { ...r, gold: r.gold - r.p["price.remove"], deck: { ...r.deck, draw: [], discard: cards } };
+}
+
+export function repair(r: Run): Run {
+  if (r.phase !== "shop" || r.shields >= r.p.shields || r.gold < r.p["price.repair"]) return r;
+  return { ...r, gold: r.gold - r.p["price.repair"], shields: r.shields + 1 };
 }
 
 export function reroll(r: Run): Run {
@@ -239,6 +264,7 @@ export function update(r0: Run, input: Input, dt: number): Run {
   const fading = {
     effects: r0.effects.map(f => ({ ...f, t: f.t - dt })).filter(f => f.t > 0),
     lastChain: r0.lastChain && r0.lastChain.t > dt ? { ...r0.lastChain, t: r0.lastChain.t - dt } : null,
+    floaters: r0.floaters.map(f => ({ ...f, y: f.y - 30 * dt, t: f.t - dt })).filter(f => f.t > 0),
     hitT: Math.max(0, r0.hitT - dt), events: [] as GameEvent[],
   };
   if (r0.phase !== "play") return { ...r0, ...fading };

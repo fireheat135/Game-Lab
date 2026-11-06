@@ -3,17 +3,19 @@
 import { tinted } from "../../engine/sprites";
 import { cellAt, lowestRow, resolveShot } from "./grid";
 import { GLOWS, STAGES_PER_DEPTH, bulletOf, type BulletId } from "./rules";
-import { bottomY, columnAt, depthRow, layout, H, LINE_Y, PLAYER_W, PLAYER_Y, W, type Run } from "./run";
+import { bottomY, columnAt, depthRow, layout, sinkPreview, H, LINE_Y, PLAYER_W, PLAYER_Y, W, type Run } from "./run";
 
-export interface ViewOptions { touch: boolean }
+/** touch: show button names instead of keys. minFont: smallest canvas font (px), raised on small screens. */
+export interface ViewOptions { touch: boolean; minFont: () => number }
 const INK = "#e8f1ff", DIM = "#9fb3d3", GOLD = "#ffcf5a", DANGER = "#ff6b6b", OK = "#4fe3a1", LINK = "#9cf";
-const MIN_FONT = 14, DECK_Y = 584;
+const DECK_Y = 584;
 
 export const fmt = (n: number) => (n >= 1e6 ? n.toExponential(2) : Math.round(n).toLocaleString());
 export const placeName = (r: Run) => `深度 ${depthRow(r.depth).meters}m（${r.depth}/4）・${r.stage + 1}/${STAGES_PER_DEPTH}`;
 
 export function createView(ctx: CanvasRenderingContext2D, sprites: Map<number, HTMLImageElement>, sub: () => HTMLImageElement | undefined, opts: ViewOptions) {
   const key = { confirm: opts.touch ? "画面タップ" : "Enter", pause: opts.touch ? "「一時停止」" : "P" };
+  let MIN_FONT = 14;
   const text = (s: string, x: number, y: number, size = MIN_FONT, color = INK, align: CanvasTextAlign = "left", weight = "") => {
     ctx.fillStyle = color; ctx.font = `${weight} ${Math.max(size, MIN_FONT)}px system-ui, sans-serif`;
     ctx.textAlign = align; ctx.textBaseline = "alphabetic"; ctx.fillText(s, x, y);
@@ -96,6 +98,22 @@ export function createView(ctx: CanvasRenderingContext2D, sprites: Map<number, H
       for (let i = 0; i < 6; i++) { const a = i * 1.047 + f.step; ctx.fillRect(f.x + Math.cos(a) * k * 34, f.y + Math.sin(a) * k * 34, 3, 3); }
       ctx.globalAlpha = 1;
     }
+    for (const f of r.floaters) { // chain labels where the chain happened (reward where the eyes are)
+      ctx.globalAlpha = Math.min(1, f.t * 2);
+      ctx.lineWidth = 4; ctx.strokeStyle = "rgba(2,8,20,.85)"; ctx.font = `800 ${f.size}px system-ui, sans-serif`; ctx.textAlign = "center";
+      ctx.strokeText(f.text, f.x, f.y); text(f.text, f.x, f.y, f.size, GOLD, "center", "800");
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  /** Where the swarm's bottom will be after the next shot: the predictable form of "the 11th shot kills you". */
+  function sinkLine(r: Run) {
+    if (r.phase !== "play" || !r.grid.cells.some(Boolean)) return;
+    const next = sinkPreview(r), lethal = next.y >= LINE_Y, y = Math.min(next.y, LINE_Y);
+    const color = lethal ? DANGER : next.reshuffle ? GOLD : "rgba(159,179,211,.6)";
+    ctx.strokeStyle = color; ctx.lineWidth = lethal || next.reshuffle ? 2 : 1; ctx.setLineDash([3, 5]);
+    ctx.beginPath(); ctx.moveTo(r.fx, y); ctx.lineTo(r.fx + r.grid.cols * layout(r.p, r.grid.rows).cellW, y); ctx.stroke(); ctx.setLineDash([]);
+    if (next.reshuffle || lethal) text(lethal ? "次の1発で防衛線を越える！" : "次は切り直し：ここまで沈む", W / 2, y - 6, MIN_FONT, color, "center", "700");
   }
 
   function actors(r: Run, t: number) {
@@ -117,7 +135,7 @@ export function createView(ctx: CanvasRenderingContext2D, sprites: Map<number, H
     const x = 14 + Math.max(1, upcoming.length) * 46;
     if (upcoming[0]) text(`次：${bulletOf(upcoming[0]).name}`, x, DECK_Y + 16, MIN_FONT, INK, "left", "600");
     const left = r.deck.draw.length;
-    text(left > 0 ? `切り直しまで ${left}発（切り直すと大きく沈む）` : "次の1発で切り直し！", x, DECK_Y + 36, MIN_FONT, left > 1 ? DIM : DANGER);
+    text(left > 0 ? `あと${left}発で切り直し` : "次の1発で切り直し！", x, DECK_Y + 36, MIN_FONT, left > 1 ? DIM : DANGER, "left", left > 1 ? "" : "700");
   }
 
   function message(lines: [string, number, string?][]) {
@@ -130,7 +148,7 @@ export function createView(ctx: CanvasRenderingContext2D, sprites: Map<number, H
     if (paused) return message([["一時停止中", 22], [`${key.pause} で再開`, MIN_FONT, LINK]]);
     if (r.phase === "preview") return message([
       [placeName(r), 18], ["同じ色はまとめて弾け、落ちて4つそろうと連鎖", MIN_FONT, DIM],
-      ["撃つたびに群れは沈む。無駄撃ちしないこと", MIN_FONT, DIM], [`${key.confirm} で潜航開始`, 15, LINK],
+      [opts.touch ? "画面下を左右になぞって狙い、離すと発射" : "撃つたびに群れは沈む。点線＝次の1発後", MIN_FONT, DIM], [`${key.confirm} で潜航開始`, 15, LINK],
     ]);
     if (r.phase === "clear") return message([["殲滅！", 24, OK], [`+${r.p.gold} ◎（連鎖ボーナス込みで ◎ ${r.gold}）`, 16, GOLD], [`${key.confirm} でショップへ`, 15, LINK]]);
     if (r.phase === "shop") return;
@@ -144,11 +162,12 @@ export function createView(ctx: CanvasRenderingContext2D, sprites: Map<number, H
   return {
     render(r: Run, t: number, paused: boolean) {
       const hit = r.phase === "play" ? r.hitT : 0;
-      const chainShake = r.lastChain && r.lastChain.t > 1.3 ? (r.lastChain.t - 1.3) * 10 * Math.min(4, r.lastChain.steps) : 0;
+      MIN_FONT = opts.minFont();
+      const chainShake = r.lastChain && r.lastChain.t > 1.3 ? (r.lastChain.t - 1.3) * 18 * Math.min(5, r.lastChain.steps) : 0;
       const shake = hit * 11 + chainShake;
       ctx.save();
       if (shake > 0) ctx.translate(Math.sin(t * 90) * shake, Math.cos(t * 70) * shake * 0.7);
-      background(t, r); hud(r); swarm(r, t); actors(r, t); deckPanel(r);
+      background(t, r); hud(r); swarm(r, t); sinkLine(r); actors(r, t); deckPanel(r);
       ctx.restore();
       if (hit > 0) { ctx.fillStyle = `rgba(255,40,40,${hit * 0.9})`; ctx.fillRect(0, 0, W, H); }
       if (r.freezeT > 0) { ctx.fillStyle = "rgba(255,255,255,.06)"; ctx.fillRect(0, 0, W, H); }

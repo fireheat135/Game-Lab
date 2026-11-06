@@ -85,3 +85,41 @@ test.describe("phone", () => {
     await page.screenshot({ path: "test-results/abyss-phone.png" });
   });
 });
+
+test("desktop: holding Space fires once (each shot is a decision)", async ({ page }) => {
+  await page.goto("/games/abyss/?test&seed=5&shotDrop=0&drift=0&cd=0.05");
+  await confirmUntil(page, "play");
+  await hook(page, "calm");
+  await page.keyboard.down(" "); await page.waitForTimeout(800); await page.keyboard.up(" ");
+  await expect.poll(async () => (await page.evaluate(() => (window as unknown as { __abyssTest: Hooks }).__abyssTest.shots())) as number).toBe(1);
+});
+
+test.describe("phone shop", () => {
+  test.use({ viewport: { width: 390, height: 664 }, hasTouch: true, isMobile: true });
+  test("the dive button is visible without scrolling; repair works", async ({ page }) => {
+    await page.goto("/games/abyss/?test&seed=5&shields=3");
+    await confirmUntil(page, "play");
+    await hook(page, "calm");
+    await clearSwarm(page);
+    await confirmUntil(page, "shop");
+    await hook(page, "gold", 50);
+    await hook(page, "damage");
+    const dive = page.getByRole("button", { name: /次の群れへ潜る/ });
+    await expect(dive).toBeInViewport();
+    await page.getByRole("button", { name: /シールド修理/ }).click();
+    await expect.poll(() => num(page, "shields")).toBe(3);
+    await page.screenshot({ path: "test-results/abyss-phone-shop.png" });
+  });
+});
+
+test.describe("phone landscape", () => {
+  test.use({ viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true });
+  test("the whole game fits the screen height", async ({ page }) => {
+    await page.goto("/games/abyss/?test&seed=5");
+    await expect(page.locator("#game")).toHaveAttribute("data-sprites", "ready");
+    const r = await page.evaluate(() => ({ stage: document.querySelector("#stage")!.getBoundingClientRect().bottom, vh: innerHeight, hscroll: document.documentElement.scrollWidth > innerWidth }));
+    expect(r.stage).toBeLessThanOrEqual(r.vh);
+    expect(r.hscroll).toBe(false);
+    await page.screenshot({ path: "test-results/abyss-landscape.png" });
+  });
+});
